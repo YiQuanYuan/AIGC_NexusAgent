@@ -1,0 +1,218 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Nexus Studio · 产品与技术设计</title><link rel="icon" href="/art/logo.svg"><style>body{margin:0;background:#f6f7f2;color:#405738;font-family:-apple-system,BlinkMacSystemFont,'PingFang SC',sans-serif}main{max-width:1020px;margin:60px auto;padding:0 30px}a{color:#789957}header{display:flex;align-items:center;gap:15px;margin-bottom:35px;font-size:13px;letter-spacing:2px}header img{width:38px}h1{font-weight:500;font-size:30px}p{font-size:13px;color:#8c9f7c;line-height:2}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #e0e8d5;border-radius:12px;padding:35px;font:12px/2 -apple-system,BlinkMacSystemFont,'PingFang SC',monospace}footer{font-size:10px;color:#a2b091;margin:30px 0}@media(max-width:600px){main{margin:30px auto;padding:0 20px}pre{padding:20px;font-size:11px}h1{font-size:24px}}</style></head><body><main><header><img src="/art/logo.svg" alt="Nexus">NEXUS STUDIO / PRODUCT NOTES</header><h1>从创意到发行的产品与技术设计</h1><p>调研结论、生产流程、素材管理和自动化接入方案。<br><a href="/">← 返回导演工作台</a></p><pre># Nexus Studio 初版产品与技术设计
+
+调研核实日期：2026-10-07。实现与验收：2026-10-08（Asia/Shanghai）。
+
+## 产品判断
+
+项目定位是「AIGC 导演工作台」：把创意、剧本、视觉设定、镜头、素材、生成任务、母版和发行连接起来。用户决定故事和审美，Agent 承接可重复工作，模型提供生成能力。衡量目标是最终故事质量、返工成本、素材可追溯性和发行完成率。
+
+初版采用五阶段的引导流程，镜头网格和轻量时间线同时呈现。完整无限画布放到后续，先验证信息结构和素材复用，避免一开始投入复杂节点编辑器却没有清晰的生产对象。
+
+## LibTV 调研：事实与借鉴
+
+可确认的官方能力：官网提供画布创作入口，以及剧本、图片、视频、音频、剪辑等创作方向；官方 Agent-IM 仓库公开会话创建、消息查询、文件上传、结果下载相关能力及鉴权说明。
+
+来源：[官网](https://www.liblib.tv/)、[官方 Agent-IM 仓库](https://github.com/libtv-labs/libtv-skills)。没有登录付费工作区体验，也没有使用第三方同名推广站来确认产品细节；模型清单、收费和实际可用权限以账号为准。
+
+本项目由此推导的设计：
+
+| 创作问题 | Nexus 方案 | 产出对象 |
+| --- | --- | --- |
+| 创意直接生视频，剧情薄弱 | 先明确观众、目标、冲突和转折 | Brief / Script |
+| 角色每次生成都变化 | 固定角色、服装、道具和参考图 | Character / Bible |
+| 镜头漂亮但难以剪成故事 | 镜头有明确叙事目的、时长与接续关系 | Shot / Timeline |
+| 生图、视频、声音散落各工具 | 项目内统一分类，并通过镜头关联素材 | Asset / Usage |
+| 不同模型回执无法统一管理 | 供应商适配器，真实任务 ID 与状态 | GenerationJob |
+| 成片完成后发行材料不齐 | 母版、字幕、封面、文案和使用权统一准备 | Deliverable |
+| 各平台能力不一致 | 能力矩阵决定 API、SDK 或人工交付 | PlatformTask |
+
+表中是产品设计建议，不能视为 LibTV 全部现有功能。
+
+## 从创意到好视频的生产步骤
+
+### 1. 创意简报与故事剧本
+
+输入：创意、目标观众、内容类型、时长、画幅、系列主题、预算、参考作品。把「谁想得到什么、什么在阻止他、最终有什么改变」写成一句话故事。
+
+Agent 后续应提供三个方向供选择，再写故事节拍、分场剧本与对白。每个场次明确地点、时间、人物、行动与信息增量。短视频开场先交代核心问题；短剧按剧目、分集和每集悬念管理。一个故事需要解决一个明确的核心冲突。
+
+质量检查：去掉只在旁白中存在的情节；让转折在画面中可见；结尾回扣一个具体意象。用户确认后锁定剧本版本，调整时可以追踪受影响镜头。
+
+初版：提供可编辑的创意与四段结构草稿，没有假称 LLM 已理解创意。
+
+### 2. 视觉圣经与基础资产
+
+角色设定包括人物动机、年龄、发型、衣领、服装、道具、习惯动作、声音、不可变化特征。角色图至少覆盖主要拍摄角度；用可靠参考图锁定身份，而不是反复只描述「一个年轻女孩」。
+
+场景设定包括时代、空间布局、入口、主道具位置、天气、主光方向、色温、时间变化。风格设定定义构图倾向、色彩、质感和禁用元素。参考图保留来源和使用权信息。
+
+初版：角色、场景、风格、负面约束可编辑；素材可分类与关联。后续把角色与场景拆为独立可复用实体，并建立多角度参考组。
+
+### 3. 专业分镜与节奏预演
+
+每个镜头的专业信息：
+
+| 字段 | 它帮助决定什么 |
+| --- | --- |
+| 叙事目的与行动 | 这一镜头让观众知道或感受到什么 |
+| 场次、角色、道具、参考图 | 生成必须使用哪些固定资产 |
+| 景别、机位、角度、焦段 | 主体与空间关系，以及强调的信息 |
+| 运镜、运动方向、速度 | 观众注意力如何转移，镜头如何接续 |
+| 构图、景深、主光与色温 | 视觉重点与片内风格 |
+| 时长、对白、环境声、音效、音乐提示 | 剪辑节奏和声音的进入点 |
+| 首尾帧、动作接续、视线、轴线 | 连续性检查与图生视频输入 |
+| 提示词、负面词、模型参数、种子 | 可复现生成及不同供应商适配 |
+| 状态、版本、关联素材、审核意见 | 哪个版本进入下一阶段 |
+
+不把所有镜头语言都塞入一条提示词。每个镜头只安排一个主要行动；明确主体、动作、环境、相机、光线和风格，检查是否相互冲突。焦段和景别是导演意图，具体模型是否遵守需要看结果。
+
+先做低成本静态预演，调整信息顺序和时长，再调用付费视频模型。审看景别是否重复、动作是否有起止、画面是否需要解释性旁白、连续性是否破坏理解。竖屏应该专门设计构图和字幕安全区域，不能简单把横版裁成竖版。
+
+初版：完整基础镜头表、可编辑提示词、图片关联、确认、排序、静态预演、CSV、SRT 和 WebM 导出。机位与首尾帧专用字段、时间码精剪与多人审片待后续。
+
+### 4. 生成、后期与质量闸口
+
+建议分两阶段生成：低成本小样验证角色和动作，再为选中的镜头生成正式版本。供应商调用异步进行；每次尝试都有模型、参数、引用资产、价格与产物记录，失败不显示完成。
+
+成片依次经历：版本挑选 → 粗剪 → 连续性检查 → 配音/音效/音乐 → 字幕 → 调色 → 平台版本输出。把对白、环境声、音乐分轨；发现问题时能回到某个镜头，而不是重做全部视频。
+
+交付前需要检查：人物身份、服装/道具漂移、手部等可见异常、空间方向、字幕、黑帧、画面质量、音轨与声音电平。具体媒体参数按目标平台当前文档和账号要求校验。
+
+后续渲染采用 FFmpeg：读取镜头清单与选择版本，将分段视频、音轨与 SRT 组合；保存 master、竖版/横版变体、封面和字幕。渲染队列独立于生成队列，支持取消和阶段性缓存。
+
+初版能导入真实的视频母版，也可导出无音轨的分镜 WebM。完整音视频合成与 AI 生成链路仍需真实服务和渲染器。
+
+### 5. 平台交付与反馈
+
+在实际发布之前，为每个平台预览最终作品、标题、文案、封面、关联账号和排期。把上传完成、创建作品、平台审核、已发布与失败分开记录。人工登记链接不能视为官方审核回执。
+
+后续回收播放、观看时长、完播、互动等账号获批可用的数据，与版本、题材和开场设计关联，形成可解释的复盘建议。初版不展示虚构的数据指标。
+
+## 素材管理设计
+
+初版采用「项目归属 + 类型分类 + 标签 + 镜头引用」。上传时记录文件名、MIME、字节数、来源、时间与使用权确认。图片能引用进镜头，视频能被选择为母版，下载保留原文件。
+
+生产版扩展：
+
+- 统一 Asset ID 与对象存储地址，SHA-256 去重，ffprobe 记录尺寸、时长、帧率和音轨；缩略图与代理文件单独生成。
+- `AssetVersion` 保存父版本、提示词、种子、生成任务、引用角色/场景、供应商费用；禁止覆写原文件。
+- `AssetUsage` 记录素材在项目/分集/镜头/母版的时间范围和用途。可以回答「这个镜头来自哪一次生成、基于什么参考图」。
+- `RightsRecord` 保存来源、授权方式、范围、到期时间、证明附件。自述使用权确认只是初版记录，不替代完整材料。
+- 项目/系列库复用角色、场景、声音和风格模板；废弃素材软删除，保留审核链。
+
+备份工程和媒体文件；JSON 里的路径不是媒体备份。密钥、账号令牌与用户素材分开保存。
+
+## 平台接入核实与限制
+
+| 平台 | 核实结果 | 初版行为 | 下一步 |
+| --- | --- | --- | --- |
+| 抖音 | 上传与创建视频有官方接口，需申请 `video.create` 与用户授权 | 等待权限、授权与适配器；不实际调用发布 | 应用入驻、OAuth、上传/创建/状态查询与回执 |
+| 小红书 | 可确认分享 SDK；授权/电商接口不证明普通账号服务端笔记发布能力 | 人工交付文案和媒体；登记发布链接 | 核实申请类型与获批能力；按 SDK 文档或合作接口接入 |
+| 红果短剧 | 可确认短剧版权中心服务覆盖红果；未确认面向普通创作者的通用发布 API | 准备剧目交付清单，等待合作权限与材料 | 对接创作者中心，取得正式文档后实现合作方适配器 |
+
+官方依据与重要细节：
+
+1. [抖音上传视频](https://open.douyin.com/platform/resource/docs/openapi/video-management/douyin/create/upload/) 与 [创建视频](https://open.douyin.com/platform/resource/docs/openapi/video-management/douyin/create/create-video)。流程是先上传获得 `video_id`，再创建作品；创建后仍有审核。文档要求代用户创建视频时让用户明确感知每次操作。生产界面需逐任务展示作品与目标账号。
+2. [小红书分享 JS SDK](https://agora.xiaohongshu.com/doc/js) 的公开检索文本说明不再支持自动填充标题、文案和话题（媒体不受该条影响）；正文页面工具未完整展开，接入时需重新核对账号可见文档。[分享平台](https://agora.xiaohongshu.com/) 与 [账号授权文档](https://openaccount.xiaohongshu.com/docs/api-reference) 属于不同能力，不能把登录授权当作笔记发布权限。
+3. [短剧版权中心用户协议](https://lf3-cdn-tos.draftstatic.com/obj/ies-hotsoon-draft/playlet-copyright/user_agreement.html) 确认平台业务范围覆盖红果。它没有提供通用创作者发布 API。
+4. [抖音短剧媒资 API](https://developer.open-douyin.com/docs/resource/zh-CN/developer/tools/cloud/api-reference/short-drama-media-api) 针对开通抖音云短剧方案的小程序。这个限定接口不能当成红果平台的上传通道。
+
+第三方教程或创作者帖子只能用作寻找官方入口的线索。未发现接口不等于平台没有合作接口。申请权限、入驻要求和具体审核材料需要按用户实际账号再次核实。
+
+默认不采用逆向私人接口或保存浏览器 Cookie 的无人值守脚本。若获批官方接口不足，可另行设计有用户参与的浏览器辅助交付：用户控制登录，系统准备素材并填充允许字段，遇到验证码、权限变化或平台限制暂停。该方式须在目标平台实际允许范围内单独验证可靠性。
+
+## 自动发布的生产架构
+
+本节是下一阶段设计，初版没有执行这些后台任务。
+
+建议服务：Web 工作台 + API + Postgres + S3 兼容对象存储 + Redis 队列 + 生成 Worker + 渲染 Worker + 发布 Worker。
+
+```text
+Idea / Script / Bible
+        ↓
+Shot revisions → Generation jobs → Versioned assets
+        ↓                                 ↓
+Timeline selection → Render worker → Master / variants
+        ↓
+User-reviewed delivery manifest + account + schedule
+        ↓
+Capability gate → Publisher adapter → Upload / create / review receipt
+        ↓
+Audit log / manual handoff / authorized metrics
+```
+
+平台适配器的建议合同：
+
+```text
+capabilities(account)
+authorize / refresh / revoke
+validate(deliverable)
+upload(file, progress)
+create(uploadReceipt, metadata)
+getStatus(platformItemId)
+fetchMetrics(platformItemId)
+```
+
+能力矩阵按「平台 + 应用类型 + 账号权限」保存，并记录核实时间。权限失效时任务转入待授权，不能偷偷降级到抓取 Cookie 的路径。
+
+任务状态：
+
+```text
+draft → ready → scheduled → uploading → submitted → under_review → published
+             ↘ blocked_auth / manual_required
+上传失败 → retry_wait → uploading（同一 upload receipt 尽量复用）
+审核驳回 → needs_revision（保留原因，重新审看修正版）
+用户取消 → cancelled
+人工交付 → manual_reported（未验证链接，独立于 published）
+```
+
+可靠性与账号管理：
+
+- OAuth 回调使用 state，令牌服务端加密，记录 scopes、过期、刷新和撤销。多账号任务指定账户 ID，避免错发账号。
+- 计划时间存 UTC，用户显示 Asia/Shanghai；记录用户审阅的素材版本和操作意图。排期到达只执行已授权、已审核且能力允许的任务。
+- `project + master hash + platform + account + revision` 作为业务幂等键，数据库唯一约束与 worker 锁避免重复发布。
+- 网络失败指数退避、抖动、最大次数与死信队列；鉴权错误等待授权；内容驳回转人工修改，不能持续自动重发。
+- 进程在上传后崩溃时复用上传回执。创建请求超时时先尝试查询对账；不能确认是否已创建时暂停人工核实，避免重复。
+- 平台有签名 Webhook 则验签并防重放；否则按获批的状态查询能力轮询。审计事件包含任务、阶段、时间、请求摘要、平台回执，排除原始 token。
+- 红果交付以剧目/分集为单位，配置剧目、集数、分集顺序、母版、字幕、封面、角色、简介、版权与平台所需材料。初版不能用单条短视频任务替代完整短剧交付。
+
+## 已实现代码架构
+
+无第三方运行依赖的本机原型，选择原生 HTML/CSS/ES Module + Node HTTP，目的是让空仓库最快形成可运行、可审阅版本。
+
+| 对象 | 位置/结构 |
+| --- | --- |
+| Project | 标题、创意、类型、画幅、时长、剧本、Bible、shots、releases |
+| Shot | 镜头语言、声音、提示词、图片/素材关联、确认状态 |
+| Asset | 项目、分类、类型、路径、MIME、标签、来源、使用权 |
+| LibTV Job | 项目、镜头、真实 sessionId、projectUuid、submitted 状态 |
+| Release Task | 平台、母版 ID、标题/文案、计划时间、真实阻塞/人工状态、事件和链接 |
+
+实际端点在 `server/index.mjs`：项目 CRUD 的创建与更新、镜头编辑与排序、素材上传与信息更新、工程导出、交付创建与登记、LibTV 提交与查询。
+
+数据库是 `data/studio.json`，上传存 `data/uploads/`；写入队列串行并原子替换。适用于单本机进程，不能作为多进程数据库。前端对用户文本转义，限制本地跨站请求与文件路径；没有公网认证与完整媒体安全扫描。
+
+## 阶段计划与验收标准
+
+### 当前 v0.1：流程与可审阅原型
+
+能够新建自己的项目，编辑分镜与视觉设定，上传并关联素材，播放和导出静音预演，选择视频母版，创建真实等待状态的交付任务。调研和边界在页面与文档中清楚可见。当前完成。
+
+### v0.2：完成真实生成与成片闭环
+
+接入经过实测的 LibTV 或其他模型；提取返回图片/视频，自动下载入库；资产版本与任务血缘；ffprobe/FFmpeg 渲染；配音、音轨和字幕校对；生成预算控制和失败重试。
+
+验收：用一段用户自选创意生成可播放的完整成片，至少一个镜头可替换版本并局部重渲染。账单、任务失败与结果一致，不把占位素材当成产物。
+
+### v0.3：真实抖音分发
+
+使用获批应用完成 OAuth、上传、创建和状态对账；支持用户审阅的排期；验证上传回执、审核状态、鉴权过期、失败恢复和重复任务处理。
+
+验收：在用户授权的测试账号上完成一次真实发布，留存平台作品 ID 与审核回执。发布网络超时不产生重复作品。
+
+### v0.4：多平台与短剧运营
+
+按小红书实际获批能力对接；取得红果合作材料后实现剧目/分集交付；按系列复用角色与资产；授权数据复盘；多成员审批和账号管理。
+
+依赖用户提供或申请：模型账户/预算、平台应用身份与 scopes、目标账号授权、红果合作/入驻权限、实际素材和交付材料。未完成权限核实时继续采用交付包与人工登记，不承诺全平台无人值守发布。
+</pre><footer>本地初版 v0.1 · 设计建议与已实现范围分别列出</footer></main></body></html>

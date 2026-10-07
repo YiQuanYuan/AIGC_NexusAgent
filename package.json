@@ -1,0 +1,14 @@
+{
+  "name": "aigc-nexus-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Nexus Studio — 从创意到分镜、素材和多平台交付的导演工作台",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev": "node --watch server/index.mjs",
+    "start": "node server/index.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check server/index.mjs && node --check server/domain.mjs && node --check public/app.js && node --check public/animatic.js"
+  }
+}
